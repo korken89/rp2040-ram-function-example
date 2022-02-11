@@ -4,6 +4,8 @@
 #![no_std]
 #![no_main]
 
+use core::convert::TryInto;
+
 use cortex_m_rt::{entry, exception, ExceptionFrame};
 use defmt::info;
 use defmt_rtt as _;
@@ -38,7 +40,7 @@ fn initialize_xip_ram() {
 
 static mut BOOT2_COPYOUT: [u32; 64] = [0; 64];
 
-#[link_section = ".xiptext"]
+#[link_section = ".data"]
 // safety: must only be called while XIP RAM is initialized with
 // the RAM functions
 #[inline(never)]
@@ -53,7 +55,7 @@ unsafe fn boot_2_copyout() {
     }
 }
 
-#[link_section = ".xiptext"]
+#[link_section = ".data"]
 // safety: must only be called while XIP RAM is initialized with
 // the RAM functions
 #[inline(never)]
@@ -70,7 +72,7 @@ unsafe fn set_cs(level: bool) {
         });
 }
 
-#[link_section = ".xiptext"]
+#[link_section = ".data"]
 // safety: must only be called while XIP RAM is initialized with
 // the RAM functions
 #[inline(never)]
@@ -86,17 +88,17 @@ unsafe fn do_flash_cmd(mut txbuf: *const u8, mut rxbuf: *mut u8, count: usize) {
     connect_internal_flash();
     flash_exit_xip();
 
-    // set_cs(false);
+    set_cs(false);
 
-    // let ssi = &*pac::XIP_SSI::ptr();
+    let ssi = &*pac::XIP_SSI::ptr();
 
-    // for i in 0..count {
-    //     while !ssi.sr.read().tfnf().bit_is_set() {}
-    //     ssi.dr0.write(|w| w.dr().bits(*txbuf.add(i) as _));
+    for i in 0..count {
+        while !ssi.sr.read().tfnf().bit_is_set() {}
+        ssi.dr0.write(|w| w.dr().bits(*txbuf.add(i) as _));
 
-    //     while !ssi.sr.read().rfne().bit_is_set() {}
-    //     ssi.dr0.write(|w| w.dr().bits(*txbuf.add(i) as _));
-    // }
+        while !ssi.sr.read().rfne().bit_is_set() {}
+        core::ptr::write(rxbuf.add(i), ssi.dr0.read().dr().bits() as _);
+    }
 
     // let mut tx_rem = count;
     // let mut rx_rem = count;
@@ -121,19 +123,19 @@ unsafe fn do_flash_cmd(mut txbuf: *const u8, mut rxbuf: *mut u8, count: usize) {
     //     }
     // }
 
-    // set_cs(true);
+    set_cs(true);
 
     flash_flush_cache();
     flash_enable_xip_via_boot2();
 }
 
-#[link_section = ".xiptext"]
+#[link_section = ".data"]
 // safety: must only be called while XIP RAM is initialized with
 // the RAM functions
 #[inline(never)]
 unsafe fn flash_enable_xip_via_boot2() {
-    let start: extern "C" fn() =
-        core::mem::transmute((BOOT2_COPYOUT.as_mut_ptr() as *const u8).add(1));
+    let ptr = (BOOT2_COPYOUT.as_mut_ptr() as *const u8).add(1) as *const ();
+    let start: extern "C" fn() = core::mem::transmute(ptr);
     start();
 }
 
@@ -149,21 +151,19 @@ fn read_uid() -> u64 {
     txbuf[0] = FLASH_RUID_CMD;
 
     unsafe {
-        initialize_xip_ram();
         do_flash_cmd(txbuf.as_ptr(), rxbuf.as_mut_ptr(), FLASH_RUID_TOTAL_BYTES);
     }
 
-    info!("rx: {}", rxbuf);
+    info!("rx: {:x}", rxbuf);
 
-    // u64::from_le_bytes(rxbuf[FLASH_RUID_DUMMY_BYTES..].try_into().unwrap())
-    0
+    u64::from_le_bytes(rxbuf[FLASH_RUID_DUMMY_BYTES + 1..].try_into().unwrap())
 }
 
 #[entry]
 fn main() -> ! {
     info!("Program start");
     let uid = read_uid();
-    info!("uid: {}", uid);
+    info!("uid: {:x}", uid);
 
     #[allow(clippy::empty_loop)]
     loop {}
