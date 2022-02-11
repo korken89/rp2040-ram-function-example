@@ -19,10 +19,11 @@ rp-pico = "0.2.0"
 [profile.dev]
 codegen-units = 1
 debug = 2
-debug-assertions = true
+debug-assertions = false
 incremental = false
-opt-level = 3
-overflow-checks = true
+lto = 'fat'
+opt-level = 2
+overflow-checks = false
 
 # cargo build/run --release
 [profile.release]
