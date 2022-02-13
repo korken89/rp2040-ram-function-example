@@ -11,6 +11,10 @@ rustflags = [
   "-C", "link-arg=-Tlink.x",
   "-C", "link-arg=-Tdefmt.x",
 
+  "-C", "inline-threshold=5",
+  "-C", "no-vectorize-loops",
+  "-C", "force-frame-pointers=no",
+
   # Code-size optimizations.
   #   trap unreachable can save a lot of space, but requires nightly compiler.
   #   uncomment the next line if you wish to enable it
